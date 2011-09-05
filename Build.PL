@@ -18,8 +18,8 @@ my $build = Module::Build->new(
     },
     meta_merge => {
         resources => {
-            repository  => 'http://github.com/exodist/DCI-Cast',
-            bugtracker  => 'http://github.com/exodist/DCI-Cast/issues',
+            repository  => 'http://github.com/exodist/DCI',
+            bugtracker  => 'http://github.com/exodist/DCI/issues',
         },
     }
 );
