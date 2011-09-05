@@ -1,0 +1,70 @@
+{
+   "abstract" : "Collection of utilities for writing perl code that fits the DCI\nmethodology.",
+   "author" : [
+      "Chad Granum <exodist7@gmail.com>"
+   ],
+   "dynamic_config" : 1,
+   "generated_by" : "Module::Build version 0.38, CPAN::Meta::Converter version 2.110440",
+   "license" : [
+      "perl_5"
+   ],
+   "meta-spec" : {
+      "url" : "http://search.cpan.org/perldoc?CPAN::Meta::Spec",
+      "version" : "2"
+   },
+   "name" : "DCI",
+   "prereqs" : {
+      "build" : {
+         "requires" : {
+            "Fennec" : "1.011"
+         }
+      },
+      "configure" : {
+         "requires" : {
+            "Module::Build" : "0.38"
+         }
+      },
+      "runtime" : {
+         "requires" : {
+            "Carp" : 0,
+            "Exporter::Declare" : 0,
+            "Scalar::Util" : 0
+         }
+      }
+   },
+   "provides" : {
+      "DCI" : {
+         "file" : "lib/DCI.pm",
+         "version" : "0.002"
+      },
+      "DCI::Cast" : {
+         "file" : "lib/DCI/Cast.pm",
+         "version" : 0
+      },
+      "DCI::Cast::Base" : {
+         "file" : "lib/DCI/Cast/Base.pm",
+         "version" : 0
+      },
+      "DCI::Context" : {
+         "file" : "lib/DCI/Context.pm",
+         "version" : 0
+      },
+      "DCI::Context::Base" : {
+         "file" : "lib/DCI/Context/Base.pm",
+         "version" : 0
+      }
+   },
+   "release_status" : "stable",
+   "resources" : {
+      "bugtracker" : {
+         "web" : "http://github.com/exodist/DCI-Cast/issues"
+      },
+      "license" : [
+         "http://dev.perl.org/licenses/"
+      ],
+      "repository" : {
+         "url" : "http://github.com/exodist/DCI-Cast"
+      }
+   },
+   "version" : "0.002"
+}
