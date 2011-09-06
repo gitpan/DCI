@@ -62,6 +62,8 @@ BEGIN {
         my $self = shift;
         $self->bar->cat();
     }
+
+    sugar 'my_context';
 }
 
 tests main => sub {
@@ -80,4 +82,17 @@ tests main => sub {
     isa_ok( $context->bar, 'CastB' );
 
     is( $context->run, "foobar", "Interactions occured properly" );
+};
+
+tests sugar => sub {
+    MyContext->import();
+
+    my $data_foo = MyData->new( "foo" );
+    my $data_bar = MyData->new( "bar" );
+
+    is(
+        my_context( foo => $data_foo, bar => $data_bar ),
+        "foobar",
+        "Interactions occured properly (sugar)"
+    );
 };

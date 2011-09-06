@@ -13,15 +13,19 @@ sub new {
 
     my $meta = $class->CONTEXT_META;
     for my $role ( keys %$meta ) {
-        my $context = $meta->{$role};
+        my $cast = $meta->{$role};
 
         my $actor = $actors{$role} || croak "No actor provided for role '$role'";
 
-        $self->{$role} = $context->new( $actors{$role}, $self );
+        $self->{$role} = $cast ? $cast->new( $actors{$role}, $self ) : $actors{$role};
     }
 
     $self->init if $self->can( 'init' );
     return $self;
+}
+
+sub run {
+    die "Run is not implemented";
 }
 
 1;

@@ -64,9 +64,14 @@ $INC{'Transfer/Log.pm'} = __FILE__;
 
     use DCI::Context;
 
+    # Define the roles
     cast from_acct => 'Transfer::FromAccount',
          dest_acct => 'Transfer::DestAccount',
-         recipt    => 'Transfer::Log';
+         recipt    => undef,
+         ammount   => undef;
+
+    # Create a sugar function for export
+    sugar 'account_transfer';
 
     sub start_transaction {
         my $self = shift;
@@ -87,16 +92,15 @@ $INC{'Transfer/Log.pm'} = __FILE__;
         # ... Stuff to finalize state
     }
 
-    sub transaction {
+    sub run {
         my $self = shift;
-        my ( $transfer_ammount ) = @_;
 
         $self->start_transaction;
 
         my $success = eval {
-            $self->from_acct->verify_funds( $transfer_ammount );
-            $self->from_acct->withdrawl( $transfer_ammount );
-            $self->dest_acct->deposit( $transfer_ammount );
+            $self->from_acct->verify_funds();
+            $self->from_acct->withdrawl();
+            $self->dest_acct->deposit();
             1;
         };
         
@@ -122,13 +126,13 @@ $INC{'Transfer/Log.pm'} = __FILE__;
 
     sub verify_funds {
         my $self = shift;
-        my ( $ammount ) = @_;
+        my $ammount = $self->CONTEXT->ammount;
         die "Origin account has insufficient funds\n" unless $ammount <= $self->get_balance;
     }
 
     sub withdrawl {
         my $self = shift;
-        my ($ammount) = @_;
+        my $ammount = $self->CONTEXT->ammount;
         $self->subtract_balance( $ammount );
         $self->CONTEXT->recipt->record( "$ammount removed from origin account" );
     }
@@ -143,18 +147,10 @@ $INC{'Transfer/Log.pm'} = __FILE__;
 
     sub deposit {
         my $self = shift;
-        my ($ammount) = @_;
+        my $ammount = $self->CONTEXT->ammount;
         $self->add_balance( $ammount );
         $self->CONTEXT->recipt->record( "$ammount added to destination account" );
     }
-
-    package Transfer::Log;
-    use strict;
-    use warnings;
-
-    use DCI::Cast;
-
-    restrict_core qw/Log/;
 }
 
 tests successful_transfer => sub {
@@ -166,9 +162,10 @@ tests successful_transfer => sub {
         from_acct => $from,
         dest_acct => $to,
         recipt    => $log,
+        ammount   => 500,
     );
 
-    $context->transaction( 500 );
+    $context->run();
 
     is( $from->get_balance, 500, "500 removed from origin account" );
     is( $to->get_balance,   600, "500 added to dest account" );
@@ -194,9 +191,10 @@ tests failed_transfer => sub {
         from_acct => $from,
         dest_acct => $to,
         recipt    => $log,
+        ammount   => 500,
     );
 
-    $context->transaction( 500 );
+    $context->run();
 
     is( $from->get_balance, 100, "Transaction failed, balance uneffected" );
     is( $to->get_balance,   100, "Transaction failed, balance uneffected" );
@@ -209,7 +207,35 @@ tests failed_transfer => sub {
         ],
         "Recipt is accurate"
     );
+};
 
+tests sugar => sub {
+    my $from = Account->new( 1000 );
+    my $to = Account->new( 100 );
+    my $log = Log->new();
+
+    Transfer->import();
+
+    account_transfer(
+        from_acct => $from,
+        dest_acct => $to,
+        recipt    => $log,
+        ammount   => 500,
+    );
+
+    is( $from->get_balance, 500, "500 removed from origin account (sugar)" );
+    is( $to->get_balance,   600, "500 added to dest account (sugar)" );
+
+    is_deeply(
+        $log,
+        [
+            'Transaction started',
+            '500 removed from origin account',
+            '500 added to destination account',
+            'Transaction completed'
+        ],
+        "Recipt is accurate (sugar)"
+    );
 };
 
 1;

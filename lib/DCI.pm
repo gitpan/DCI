@@ -2,7 +2,7 @@ package DCI;
 use strict;
 use warnings;
 
-our $VERSION = "0.003";
+our $VERSION = "0.004";
 
 1;
 
@@ -98,9 +98,15 @@ This is the package for our use case, a transfer between accounts.
 
     use DCI::Context;
 
+    # Define the roles
     cast from_acct => 'Transfer::FromAccount',
          dest_acct => 'Transfer::DestAccount',
-         recipt    => 'Transfer::Log';
+         # Roles with no cast class will be used as-is
+         recipt    => undef,
+         ammount   => undef;
+
+    # Create a sugar function that is exported when this use-case is imported.
+    sugar 'account_transfer';
 
     sub start_transaction {
         my $self = shift;
@@ -121,16 +127,15 @@ This is the package for our use case, a transfer between accounts.
         # ... Stuff to finalize state
     }
 
-    sub transaction {
+    sub run {
         my $self = shift;
-        my ( $transfer_ammount ) = @_;
 
         $self->start_transaction;
 
         my $success = eval {
-            $self->from_acct->verify_funds( $transfer_ammount );
-            $self->from_acct->withdrawl( $transfer_ammount );
-            $self->dest_acct->deposit( $transfer_ammount );
+            $self->from_acct->verify_funds();
+            $self->from_acct->withdrawl();
+            $self->dest_acct->deposit();
             1;
         };
 
@@ -142,7 +147,6 @@ This is the package for our use case, a transfer between accounts.
             $self->rollback_transaction( $error );
         }
     }
-
 
 =head2 THE ROLES (CAST)
 
@@ -161,13 +165,13 @@ We define 3 roles, from_acct, dest_acct, and recipt.
 
     sub verify_funds {
         my $self = shift;
-        my ( $ammount ) = @_;
+        my $ammount = $self->CONTEXT->ammount;
         die "Origin account has insufficient funds\n" unless $ammount <= $self->get_balance;
     }
 
     sub withdrawl {
         my $self = shift;
-        my ($ammount) = @_;
+        my $ammount = $self->CONTEXT->ammount;
         $self->subtract_balance( $ammount );
         $self->CONTEXT->recipt->record( "$ammount removed from origin account" );
     }
@@ -184,22 +188,44 @@ We define 3 roles, from_acct, dest_acct, and recipt.
 
     sub deposit {
         my $self = shift;
-        my ($ammount) = @_;
+        my $ammount = $self->CONTEXT->ammount;
         $self->add_balance( $ammount );
         $self->CONTEXT->recipt->record( "$ammount added to destination account" );
     }
 
-=head3 Transfer::Log
-
-    package Transfer::Log;
-    use strict;
-    use warnings;
-
-    use DCI::Cast;
-
-    restrict_core qw/Log/;
-
 =head2 PUTTING IT ALL TOGETHER
+
+=head3 USING THE SUGAR FUNCTION
+
+    # This will import the 'account_transfer()' function.
+
+    use Transfer;
+    my $from = Account->new( 1000 );
+    my $to = Account->new( 100 );
+    my $log = Log->new();
+
+    Transfer->import();
+
+    account_transfer(
+        from_acct => $from,
+        dest_acct => $to,
+        recipt    => $log,
+        ammount   => 500,
+    );
+
+    is( $from->get_balance, 500, "500 removed from origin account (sugar)" );
+    is( $to->get_balance,   600, "500 added to dest account (sugar)" );
+
+    is_deeply(
+        $log,
+        [
+            'Transaction started',
+            '500 removed from origin account',
+            '500 added to destination account',
+            'Transaction completed'
+        ],
+        "Recipt is accurate (sugar)"
+    );
 
 =head3 SUCCESSFUL TRANSFER
 
@@ -211,9 +237,10 @@ We define 3 roles, from_acct, dest_acct, and recipt.
         from_acct => $from,
         dest_acct => $to,
         recipt    => $log,
+        ammount   => 500,
     );
 
-    $context->transaction( 500 );
+    $context->run();
 
     is( $from->get_balance, 500, "500 removed from origin account" );
     is( $to->get_balance,   600, "500 added to dest account" );
@@ -239,9 +266,10 @@ We define 3 roles, from_acct, dest_acct, and recipt.
         from_acct => $from,
         dest_acct => $to,
         recipt    => $log,
+        ammount   => 500,
     );
 
-    $context->transaction( 500 );
+    $context->run();
 
     is( $from->get_balance, 100, "Transaction failed, balance uneffected" );
     is( $to->get_balance,   100, "Transaction failed, balance uneffected" );
@@ -331,6 +359,8 @@ use-case (context)
 =item L<http://en.wikipedia.org/wiki/Data,_Context_and_Interaction>
 
 =item L<https://sites.google.com/a/gertrudandcope.com/www/thedciarchitecture>
+
+=item L<http://oredev.org/videos/dci--re-thinking-the-foundations-of-oo>
 
 =back
 

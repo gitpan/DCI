@@ -16,7 +16,7 @@ name: DCI
 provides:
   DCI:
     file: lib/DCI.pm
-    version: 0.003
+    version: 0.004
   DCI::Cast:
     file: lib/DCI/Cast.pm
     version: 0
@@ -37,4 +37,4 @@ resources:
   bugtracker: http://github.com/exodist/DCI/issues
   license: http://dev.perl.org/licenses/
   repository: http://github.com/exodist/DCI
-version: 0.003
+version: 0.004

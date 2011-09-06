@@ -17,8 +17,9 @@ default_export cast => sub {
     my $meta = $class->CONTEXT_META;
     my %roles = @_;
     for my $role ( keys %roles ) {
-        my $cast = $roles{$role};
-        eval "require $cast; 1" || die $@;
+        if( my $cast = $roles{$role} ) {
+            eval "require $cast; 1" || die $@;
+        }
         no strict 'refs';
         *{"$class\::$role"} = sub { shift->{$role} };
     }
@@ -29,6 +30,19 @@ default_export cast => sub {
 gen_default_export CONTEXT_META => sub {
     my $meta = {};
     return sub { $meta };
+};
+
+default_export sugar => sub {
+    my ( $name ) = @_;
+    my $caller = caller;
+    no strict 'refs';
+    *{ "$caller\::import" } = sub {
+        my $class = shift;
+        my $caller = caller;
+        *{ "$caller\::$name" } = sub {
+            $class->new( @_ )->run();
+        };
+    };
 };
 
 1;
@@ -94,6 +108,15 @@ used for the role. Any number of roles may be defined, and C<cast(...)> may be c
 any number of times.
 
 C<cast()> also returns all currently defined roles.
+
+If you wish to define a role, but do not want to apply a cast to the object
+assigned to that role, simply use C<undef> as the Cast class.
+
+=item sugar( 'sugar_function_name' )
+
+Define a sugar function that should be exported. This sugar function will
+construct a context from arguments, call run() on the context, and return the
+final value.
 
 =back
 
