@@ -35,7 +35,7 @@
    "provides" : {
       "DCI" : {
          "file" : "lib/DCI.pm",
-         "version" : "0.011"
+         "version" : "0.012"
       },
       "DCI::Cast" : {
          "file" : "lib/DCI/Cast.pm",
@@ -43,6 +43,10 @@
       },
       "DCI::Context" : {
          "file" : "lib/DCI/Context.pm",
+         "version" : 0
+      },
+      "DCI::Introduction" : {
+         "file" : "lib/DCI/Introduction.pm",
          "version" : 0
       },
       "DCI::Meta" : {
@@ -70,5 +74,5 @@
          "url" : "http://github.com/exodist/DCI"
       }
    },
-   "version" : "0.011"
+   "version" : "0.012"
 }

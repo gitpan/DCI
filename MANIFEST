@@ -3,6 +3,7 @@ CHANGES
 lib/DCI.pm
 lib/DCI/Cast.pm
 lib/DCI/Context.pm
+lib/DCI/Introduction.pm
 lib/DCI/Introduction.pod
 lib/DCI/Meta.pm
 lib/DCI/Meta/Cast.pm
