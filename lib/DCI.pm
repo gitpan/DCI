@@ -2,7 +2,34 @@ package DCI;
 use strict;
 use warnings;
 
-our $VERSION = "0.004";
+our $VERSION = "0.011";
+use Carp qw/croak/;
+
+sub import {
+    my $class = shift;
+    my ( $type, @args ) = @_;
+    my $caller = caller;
+
+    my $meta;
+
+    for ( "DCI::Meta::$type", $type ) {
+        my $good = eval "require $_; 1";
+        my $error = $@;
+
+        $meta = $_ if $good;
+        last if $meta;
+
+        # Rethrow error that is not can't locate
+        die "Error loading $_: $error" if $error !~ m/Can't locate/;
+    }
+
+    croak "'Neither DCI::Meta::$type' nor '$type' appear to be 'DCI::Meta' packages"
+        unless $meta
+            && $meta->isa( 'DCI::Meta' );
+
+    $meta->new( $caller );
+    $meta->export_to( $caller => @args );
+}
 
 1;
 
@@ -17,352 +44,212 @@ methodology.
 
 =head1 DESCRIPTION
 
-Defines the DCI concepts of B<Context> L<DCI::Context> and B<Role> L<DCI::Cast>.
+The DCI concept was created by Trygve Reenskaug, (inventor of MVC) and James
+Coplien.
 
-The DCI concept of a 'role' differs from the concept of roles as defined by
-Moose. Because of this the term 'Cast' is used by DCI to refer to DCI Roles.
-This will hopefulyl avoid some confusion.
+DCI Stands for Data, Context, Interactions. It was created to solve the problem
+of unpredictable emergent behavior in networks of interacting objects. This
+problem shows itself in complex OOP projects, most commonly in projects with
+deep polymorphism. This is a problem that Procedural/Imperative Programming
+does not have.
 
-=head1 SYNOPSYS
+DCI does not replace OOP, instead it augments it with lessons learned from
+looking back at Procedural Programming. It defines a way to encapsulate use
+cases into a single place. This provides an advantage to the programmer by
+reducing the number of interactions that need to be tracked. Another advantage
+is the reduction of side-effects between contexts.
 
-Here we will implement a complete algorthm including Data classes, a Context
-class, and Casts. We will implement a banking transfer as that is a common
-example used to explain DCI.
+Another way to look at it is that a DCI implementation is much more
+maintainable as a project matures. Changes to requirements and additional
+features cause clean OOP project to degrade into spaghetti. DCI on the other
+hand maintains code clarity under changing requirements.
 
-This example is implemented in the C<t/bank.t> test if you wish to see it in
-action.
+=head1 MORE ABOUT DCI
 
-=head2 THE DATA CLASSES
+Look at L<DCI::Introduction> for a complete introduction into DCI concepts.
 
-=head3 Account
+=head1 SYNOPSIS
 
-This is an implementation of a bank account that follows the DCI principal that
-Data objects should be fairly dumb.
+This synopsis is very basic, see individual modules for better module-specific
+examples. Also see L<DCI::Introduction> if you do not yet understand DCI
+concepts.
 
-    package Account;
+=head2 DUMB DATA CLASS
+
+    package Test::Data;
     use strict;
     use warnings;
 
     sub new {
         my $class = shift;
-        my ($balance) = @_;
-
-        return bless( \$balance, $class );
+        my ( $value ) = @_;
+        return bless( \$value, $class );
     }
 
-    sub add_balance {
+    sub get_text { ${ $_[0] } }
+
+    sub set_text { 
         my $self = shift;
-        my ( $delta ) = @_;
-        $$self += $delta;
+        my ( $new_val ) = @_;
+        $$self = $new_val;
     }
 
-    sub subtract_balance {
-        my $self = shift;
-        my ( $delta ) = @_;
-        $$self -= $delta;
-    }
+    1;
 
-    sub get_balance {
-        my $self = shift;
-        return $$self;
-    }
+=head2 TRIVIAL CAST CLASS (ROLE)
 
-=head3 Log
-
-This is a package for a log or recipt class, also dumb.
-
-    package Log;
+    package Test::Cast;
     use strict;
     use warnings;
 
-    sub new {
-        my $class = shift;
-        return bless( [], $class );
-    }
+    use DCI qw/Cast/;
 
-    sub record {
+    # Delegate the text() method to the 'core'
+    delegate qw/text/;
+
+    # Restrict core to being a Test::Data object.
+    require_core qw/Test::Data/;
+
+    # Generate some accessors which keep state in the Cast, but do not interfer
+    # with the Core object.
+    accessors qw/cache/;
+
+    # Add a method to our cast
+    sub render {
         my $self = shift;
-        my ($line) = @_;
-        chomp( $line );
-        push @$self => $line;
+
+        my $cached = $self->cache;
+
+        # text() is delgated to the underlying 'core'
+        $cached = $self->cache(
+            "The text is: '" . $self->text() . "'\n"
+        ) unless $cached;
+
+        return $cached;
     }
 
+    1;
 
-=head2 THE CONTEXT (Use-Case)
+=head2 A CONTEXT
 
-This is the package for our use case, a transfer between accounts.
-
-    package Transfer;
+    package Test::Context;
     use strict;
     use warnings;
 
-    use DCI::Context;
+    use DCI qw/Context/;
+    use Test::Cast;
 
-    # Define the roles
-    cast from_acct => 'Transfer::FromAccount',
-         dest_acct => 'Transfer::DestAccount',
-         # Roles with no cast class will be used as-is
-         recipt    => undef,
-         ammount   => undef;
+    # Declare some required member objects
+    cast first => 'Test::Cast',
+         last  => 'Test::Cast';
 
-    # Create a sugar function that is exported when this use-case is imported.
-    sugar 'account_transfer';
+    # export a function named 'quick_render' that constructs the object from
+    # arguments, and returns the result of running the 'render()' method on the
+    # created object.
+    sugar quick_render => (
+        method  => 'render',
+        ordered => [qw/ first last /]
+    );
 
-    sub start_transaction {
-        my $self = shift;
-        $self->recipt->record( "Transaction started" );
-        # ... Stuff to record current state in case of issue
-    }
+    # A sugar export that takes named arguments.
+    sugar parametric_render => 'render';
 
-    sub rollback_transaction {
-        my $self = shift;
-        my ( $error ) = @_;
-        $self->recipt->record( "Transaction aborted: $error" );
-        # ... Stuff to restore previous state
-    }
+    # Method we use to kick-off the encapsulated task of the Context.
+    sub render { shift->first->render }
 
-    sub commit_transaction {
-        my $self = shift;
-        $self->recipt->record( "Transaction completed" );
-        # ... Stuff to finalize state
-    }
-
-    sub run {
-        my $self = shift;
-
-        $self->start_transaction;
-
-        my $success = eval {
-            $self->from_acct->verify_funds();
-            $self->from_acct->withdrawl();
-            $self->dest_acct->deposit();
-            1;
-        };
-
-        if ( $success ) {
-            $self->commit_transaction;
-        }
-        else {
-            my $error = $@;
-            $self->rollback_transaction( $error );
-        }
-    }
-
-=head2 THE ROLES (CAST)
-
-We define 3 roles, from_acct, dest_acct, and recipt.
-
-=head3 Transfer::FromAccount
-
-    package Transfer::FromAccount;
-    use strict;
-    use warnings;
-
-    use DCI::Cast;
-
-    # Require that core class is an Account object.
-    restrict_core qw/Account/;
-
-    sub verify_funds {
-        my $self = shift;
-        my $ammount = $self->CONTEXT->ammount;
-        die "Origin account has insufficient funds\n" unless $ammount <= $self->get_balance;
-    }
-
-    sub withdrawl {
-        my $self = shift;
-        my $ammount = $self->CONTEXT->ammount;
-        $self->subtract_balance( $ammount );
-        $self->CONTEXT->recipt->record( "$ammount removed from origin account" );
-    }
-
-=head3 Transfer::DestAccount
-
-    package Transfer::DestAccount;
-    use strict;
-    use warnings;
-
-    use DCI::Cast;
-
-    restrict_core qw/Account/;
-
-    sub deposit {
-        my $self = shift;
-        my $ammount = $self->CONTEXT->ammount;
-        $self->add_balance( $ammount );
-        $self->CONTEXT->recipt->record( "$ammount added to destination account" );
-    }
+    1;
 
 =head2 PUTTING IT ALL TOGETHER
 
-=head3 USING THE SUGAR FUNCTION
+    use Test::More;
 
-    # This will import the 'account_transfer()' function.
+    use Test::Context qw/quick_render/;
 
-    use Transfer;
-    my $from = Account->new( 1000 );
-    my $to = Account->new( 100 );
-    my $log = Log->new();
-
-    Transfer->import();
-
-    account_transfer(
-        from_acct => $from,
-        dest_acct => $to,
-        recipt    => $log,
-        ammount   => 500,
+    is(
+        quick_render( "String A", "String B" ),
+        "The text is: 'String A'\nThe text is: 'String B'",
+        "Rendered first and last strings using quick sugar"
     );
 
-    is( $from->get_balance, 500, "500 removed from origin account (sugar)" );
-    is( $to->get_balance,   600, "500 added to dest account (sugar)" );
-
-    is_deeply(
-        $log,
-        [
-            'Transaction started',
-            '500 removed from origin account',
-            '500 added to destination account',
-            'Transaction completed'
-        ],
-        "Recipt is accurate (sugar)"
+    is(
+        parametric_render(
+            first => "String A",
+            last  => "String B",
+        ),
+        "The text is: 'String A'\nThe text is: 'String B'",
+        "Rendered first and last strings using named parameters"
     );
 
-=head3 SUCCESSFUL TRANSFER
-
-    my $from = Account->new( 1000 );
-    my $to = Account->new( 100 );
-    my $log = Log->new();
-
-    my $context = Transfer->new(
-        from_acct => $from,
-        dest_acct => $to,
-        recipt    => $log,
-        ammount   => 500,
+    my $it = Test::Context->new(
+        first => "String A",
+        last  => "String B",
     );
 
-    $context->run();
-
-    is( $from->get_balance, 500, "500 removed from origin account" );
-    is( $to->get_balance,   600, "500 added to dest account" );
-
-    is_deeply(
-        $log,
-        [
-            'Transaction started',
-            '500 removed from origin account',
-            '500 added to destination account',
-            'Transaction completed'
-        ],
-        "Recipt is accurate"
+    is(
+        $it->render,
+        "The text is: 'String A'\nThe text is: 'String B'",
+        "Rendered first and last strings from onbject instance"
     );
 
-=head3 FAILED TRANSFER
+    1;
 
-    my $from = Account->new( 100 );
-    my $to = Account->new( 100 );
-    my $log = Log->new();
+=head1 OBJECT TYPES
 
-    my $context = Transfer->new(
-        from_acct => $from,
-        dest_acct => $to,
-        recipt    => $log,
-        ammount   => 500,
-    );
+=head2 CONTEXT
 
-    $context->run();
+=head3 SUGAR FUNCTIONS
 
-    is( $from->get_balance, 100, "Transaction failed, balance uneffected" );
-    is( $to->get_balance,   100, "Transaction failed, balance uneffected" );
+See L<DCI::Meta::Context> which actually exports the sugar.
 
-    is_deeply(
-        $log,
-        [
-            'Transaction started',
-            'Transaction aborted: Origin account has insufficient funds',
-        ],
-        "Recipt is accurate"
-    );
+=head3 METHODS
+
+See L<DCI::Context> the base class for all Casts.
+
+=head2 CAST
+
+=head3 SUGAR FUNCTIONS
+
+See L<DCI::Meta::Cast> which actually exports the sugar.
+
+=head3 METHODS
+
+See L<DCI::Cast> the base class for all Casts.
+
+=head1 API STABILITY
+
+Versions below 0.011 were a prototype, the API was subject to flux. For 0.011
+the API has been completely re-written using the lessons learned from the old
+API.
+
+B<As of 0.011, the API can be considered stable.> This means that changes which
+break backwards compatibility will be few and far between.
 
 =head1 SEE ALSO
 
 =over 4
 
+=item L<DCI::Meta::Context>
+
+Meta class for contexts
+
+=item L<DCI::Meta::Cast>
+
+Meta class for casts
+
 =item L<DCI::Context>
+
+Base class for contexts
 
 =item L<DCI::Cast>
 
-=back
-
-=head1 DCI Overview
-
-DCI Stands for Data, Context, Interactions. It attempts to solve the problems
-of OOP. DCI was designed and proposed by the same guy that created the MVC
-concept that has become hugely successful. The key to DCI is a seperation of
-concepts:
-
-=over 4
-
-=item Data, what the system is.
-
-=item Context, A use case.
-
-=item Interactions, How objects behave within a context.
+Base class for casts
 
 =back
 
-The idea is to create data objects that have no algorithm or business logic at
-all. These would be very simple "dumb" objects. A good example would be ORM
-objects that get used in many contexts. The key is to only add methods which
-make sence without any knowledge of the business logic or use cases in which
-they will participate.
+=head1 ACHNOWLEDGEMENTS
 
-Once you have your data objects you then move on to a context. A context
-itself can be thought of as an object. A context implements a use case, which
-could be an encapsulated bit of business logic, or an algorithm. The use case
-object would keep track of objects necessary to complete the task. The context
-keeps track of these items by the concept of what role they will play.
-
-In DCI the concept of a role only superficially resembles roles as they are
-implemented by Moose. In Moose a role is essentially a mixin with methods that
-get injected into a class as soon as the role is used, and then they remain
-present for the life of the class. In DCI roles can also be thought of as
-mixins, however the methods they contain should only be present in your data
-object when it is used in context.
-
-To wrap up:
-
-=over 4
-
-=item Data objects
-
-Such as objects in an ORM, should not contain business or algorithm logic. Only
-methods that make sence without any context belong in the data objects.
-
-=item Context objects
-
-Implement an algorithm by defining roles, assigning data objects to roles, and
-then kicking off the interactions between the roles.
-
-=item Roles
-
-Collections of methods used for interactions between objects in a specific
-use-case (context)
-
-=back
-
-=head1 DCI RESOURCES
-
-=over 4
-
-=item L<http://www.artima.com/articles/dci_vision.html>
-
-=item L<http://en.wikipedia.org/wiki/Data,_Context_and_Interaction>
-
-=item L<https://sites.google.com/a/gertrudandcope.com/www/thedciarchitecture>
-
-=item L<http://oredev.org/videos/dci--re-thinking-the-foundations-of-oo>
-
-=back
+The DCI concept was created by Trygve Reenskaug, (inventor of MVC) and James
+Coplien.
 
 =head1 AUTHORS
 
@@ -378,3 +265,4 @@ DCI is distributed in the hope that it will be useful, but WITHOUT ANY
 WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
 PARTICULAR PURPOSE. See the license for more details.
 
+=cut

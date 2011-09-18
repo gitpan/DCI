@@ -10,11 +10,11 @@ my $build = Module::Build->new(
     create_readme => 1,
     requires => {
         'Carp'              => 0,
-        'Exporter::Declare' => 0,
-        'Scalar::Util' => 0,
+        'Scalar::Util'      => 0,
+        'Exporter::Declare' => 0.105,
     },
     build_requires => {
-        'Fennec'     => '1.011',
+        'Fennec' => '1.011',
     },
     meta_merge => {
         resources => {

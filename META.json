@@ -27,7 +27,7 @@
       "runtime" : {
          "requires" : {
             "Carp" : 0,
-            "Exporter::Declare" : 0,
+            "Exporter::Declare" : "0.105",
             "Scalar::Util" : 0
          }
       }
@@ -35,22 +35,26 @@
    "provides" : {
       "DCI" : {
          "file" : "lib/DCI.pm",
-         "version" : "0.004"
+         "version" : "0.011"
       },
       "DCI::Cast" : {
          "file" : "lib/DCI/Cast.pm",
-         "version" : 0
-      },
-      "DCI::Cast::Base" : {
-         "file" : "lib/DCI/Cast/Base.pm",
          "version" : 0
       },
       "DCI::Context" : {
          "file" : "lib/DCI/Context.pm",
          "version" : 0
       },
-      "DCI::Context::Base" : {
-         "file" : "lib/DCI/Context/Base.pm",
+      "DCI::Meta" : {
+         "file" : "lib/DCI/Meta.pm",
+         "version" : 0
+      },
+      "DCI::Meta::Cast" : {
+         "file" : "lib/DCI/Meta/Cast.pm",
+         "version" : 0
+      },
+      "DCI::Meta::Context" : {
+         "file" : "lib/DCI/Meta/Context.pm",
          "version" : 0
       }
    },
@@ -66,5 +70,5 @@
          "url" : "http://github.com/exodist/DCI"
       }
    },
-   "version" : "0.004"
+   "version" : "0.011"
 }

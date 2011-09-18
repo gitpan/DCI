@@ -2,173 +2,201 @@ package DCI::Cast;
 use strict;
 use warnings;
 
-use Carp qw/croak confess/;
-use Exporter::Declare;
-use Scalar::Util qw/blessed/;
-use List::Util qw/first/;
-use DCI::Cast::Base;
+use Carp();
+use Scalar::Util();
 
-our $AUTOLOAD;
-
-sub after_import {
+sub dci_new {
     my $class = shift;
-    my ( $importer, $specs ) = @_;
-    no strict 'refs';
-    push @{ "$importer\::ISA" } => 'DCI::Cast::Base';
+    my ( $direct_core, $context, %state ) = @_;
+
+    Carp::croak( "You must provide a core object" )
+        unless $direct_core;
+
+    Carp::croak( "You must provide a context" )
+        unless $context;
+
+    my $direct_core_type = Scalar::Util::blessed( $direct_core )
+                        || Scalar::Util::reftype( $direct_core );
+
+    my @allowed_cores = $class->dci_meta->allowed_cores;
+    if ( @allowed_cores && !(grep { $direct_core->isa( $_ ) } @allowed_cores )) {
+        Carp::croak "Invalid core '$direct_core_type' is not one of: "
+            . join( ', ', @allowed_cores )
+    }
+
+    my $true_core = $direct_core;
+    $true_core = $true_core->dci_core
+        if Scalar::Util::blessed($true_core)
+        && $true_core->isa( __PACKAGE__ );
+
+    my $true_core_type = Scalar::Util::blessed( $true_core )
+                      || Scalar::Util::reftype( $true_core );
+
+    return bless {
+        'state'          => \%state,
+        true_core        => $true_core,
+        direct_core      => $direct_core,
+        context          => $context,
+        true_core_type   => $true_core_type,
+        direct_core_type => $direct_core_type,
+        context_type     => Scalar::Util::blessed( $context )
+                         || Scalar::Util::reftype( $context ),
+    }, $class;
 }
 
-gen_default_export CAST_META => sub {
-    my $meta = {};
-    return sub { $meta };
-};
+sub dci_meta {
+    my $self_or_class = shift;
+    my $class = Scalar::Util::blessed( $self_or_class )
+             || $self_or_class;
 
-default_export depends_on => sub {
-    my $class = caller;
-    my $meta = $class->CAST_META;
-    push @{$meta->{depends}} => @_;
-    return @{$meta->{depends}};
-};
+    require DCI::Meta::Cast;
+    DCI::Meta::Cast->new( $class );
+}
 
-default_export restrict_core => sub {
-    my $class = caller;
-    my $meta = $class->CAST_META;
-    push @{$meta->{restrict}} => @_;
-    return @{$meta->{restrict}};
-};
+sub dci_state { shift->{'state'} }
+
+sub dci_context      { shift->{context}      }
+sub dci_context_type { shift->{context_type} }
+
+sub dci_core      { shift->dci_true_core      }
+sub dci_core_type { shift->dci_true_core_type }
+
+sub dci_true_core      { shift->{true_core}      }
+sub dci_true_core_type { shift->{true_core_type} }
+
+sub dci_direct_core      { shift->{direct_core}      }
+sub dci_direct_core_type { shift->{direct_core_type} }
+
+sub dci_debug {
+    my $self = shift;
+
+    my $out_start = "";
+    my $out_end = "";
+    my ( $type, $core_type, $core );
+    do {
+        my $one    = $core || $self;
+        $type      = Scalar::Util::blessed($one);
+        $core      = $one->dci_direct_core;
+        $core_type = $one->dci_direct_core_type;
+
+        $out_start = "$out_start$type( ";
+        $out_end = ")$out_end";
+    } while $core_type && $core_type->isa( __PACKAGE__ );
+
+    return "$out_start$core $out_end";
+}
+
+sub isa {
+    my $self = shift;
+
+    return $self->SUPER::isa( @_ )
+        unless Scalar::Util::blessed( $self );
+
+    my $core = $self->dci_core;
+    return $self->SUPER::isa( @_ ) || $core->isa( @_ );
+}
 
 1;
 
 __END__
 
-=pod
-
 =head1 NAME
 
-DCI::Cast - Implementation of a DCI concept of roles, named 'cast' to avoid
-conflict with other concepts named 'role'.
+DCI::Cast - Base class for Cast classes.
 
 =head1 DESCRIPTION
 
-Most implementations of roles take the form of a mixin applied to a package at
-build-time. For most cases build-time mixin is adequate. However sometimes you
-want to add methods to a package which you do not control. Even worse the
-instance of the object you are using may be constructed in code you don't
-control making subclassing difficult. In these cases you might get a patch
-applied upstream, otherwise you may need to resort to monkey patching, or your
-own hacked version of the library.
-
-DCI::Cast provides an alternate way to solve this problem. The DCI concept of
-roles usually refers to method injecting at run-time. That is adding the
-methods to the object when they are needed, until the task that needs them is
-complete when they cease to clutter the core object. That is what a Cast object
-does.
-
-You write a cast much the same way you would write a subclass. The difference
-is that you construct the cast by providing an existing instance of the object
-to which you wish to apply new methods. You will then get an object that
-contains the new methods you specified, as well as the original methods of the
-core object. You cast can simply refer to 'self' to use the underlying core
-object.
-
-Your core object will not be contaminated by the new methods anywhere in the
-code except where used under the cast. The cast will also masquerade as the
-underlying object, and can be used in any code that verifies you object is of
-the underlying core type. You may call any method defined in the cast, or the
-core objects inheritance tree.
+All Cast classes (Roles in typical DCI terminology) inherit from this class.
+This class provides several key methods.
 
 =head1 SYNOPSIS
 
-See L<DCI> for a complete synopsis including Data, Context, and Cast classes.
+See the docs for L<DCI> or L<DCI::Meta::Cast>, using this base directly is not
+recommended.
 
-    package MyCast;
+=head1 METHODS
 
-    # This automatically adds DCI::Cast::Base to this packages @ISA.
-    use DCI::Cast;
+=head2 METHODS TO KEEP IN MIND
 
-    # Require that any core object provided implement the 'foo' method
-    depends_on qw/foo/;
-
-    # Require that any core object provided be of one of these packages
-    restrict_core qw/MyRoot OtherRoot/;
-
-    # The constructor will call init with all params provided to the
-    # constructor except the first argument which is the core object.
-    sub init {
-        my $self = shift;
-        my %params = @_;
-        ...
-    }
-
-    sub foobar {
-        my $self = shift;
-        return $self->foo() . "bar";
-    }
-
-=head1 EXPORTS
-
-When you use DCI::Core it imports the following functions that allow you to
-manipulate metadata for the Cast object.
+These methods need to be kept in mind. If you choose to override them you could
+break functionality.
 
 =over 4
 
-=item $meta = CAST_META()
+=item $class_or_self->isa( $TYPE )
 
-Get the metadata hash for this Cast class.
-
-=item @dependancies = depends_on( @add_dependancies )
-
-Get/add to the methods a core object must implement for this cast.
-
-=item @restrictions = restrict_core( @add_options )
-
-Get/add to the classes that are allowed to act as a 'core' object.
+C<isa()> has been overriden so that it first calls isa() on the Cast class,
+then if that returns false, calls isa on the core object. You probably do not
+want to override this.
 
 =back
 
-=head1 CAST CLASS/OBJECT METHODS
-
-These are methods defined by the DCI::Cast::Base package:
+=head2 PUBLIC METHODS
 
 =over 4
 
-=item my $cast = $class->new( $core, %params )
+=item $class->dci_new( $CORE, $CONTEXT, %STATE )
 
-Create a new instance of the cast around the core object $core. Anything in
-%params will be passed to init() if a method of that name exists.
+Create a new instance of the cast around the $CORE object with the specified
+context and state.
 
-=item my $core = $cast->CORE()
+=item $class->dci_meta()
 
-Get the core object around which the cast instance is built.
+Get the metadata object (Which is an instance of L<DCI::Meta::Cast>.)
 
-=item my $context = $cast->CONTEXT()
+=item $cast->dci_core()
 
-Get the context object.
+Alias for C<dci_true_core>.
 
-=item my $subref = $cast->can( $method_name )
+=item $cast->dci_core_type()
 
-Implementation of can() which will check the cast first, then the core.
+Alias for C<dci_true_core_type>,
 
-=item my $bool = $cast->isa( $package_name )
+=item $cast->dci_true_core()
 
-Implementation of isa which will check the cast first, then the core.
+Returns the core object around which the cast was constructed. When Casts are
+nested, the inner-most core object will be returned. See C<dci_direct_core> if
+this is not what you want.
 
-=item AUTOLOAD()
+=item $cast->dci_true_core_type()
 
-Documented for completeness, do not override.
+Returns the type of the inner-most core object. Will return the package to
+which the object has been blessed, or the ref type if it is not blessed.
+
+=item $cast->dci_direct_core()
+
+Get the direct core, even if it is itself a cast object.
+
+=item $cast->dci_direct_core_type()
+
+Returns the type of the core object. Will return the package to which the
+object has been blessed, or the ref type if it is not blessed.
+
+=item $cast->dci_context()
+
+Get the context object with which the cast object was constructed.
+
+=item $cast->dci_context_type()
+
+Get the type of the context object. Will return the package to which the object
+has been blessed, or the ref type if it is not blessed.
+
+=item $cast->dci_state()
+
+Get the state hash associated with this cast instance.
+
+=item $cast->dci_debug()
+
+Returns a string detailing the structure of a nested cast
+
+Example: C<"Test::Cast( Test::Cast( Test::Core=HASH(0x1f29f28) ))">
 
 =back
 
-=head1 DCI RESOURCES
+=head1 ACHNOWLEDGEMENTS
 
-=over 4
-
-=item L<http://www.artima.com/articles/dci_vision.html>
-
-=item L<http://en.wikipedia.org/wiki/Data,_Context_and_Interaction>
-
-=item L<https://sites.google.com/a/gertrudandcope.com/www/thedciarchitecture>
-
-=back
+The DCI concept was created by Trygve Reenskaug, (inventor of MVC) and James
+Coplien.
 
 =head1 AUTHORS
 
@@ -184,6 +212,4 @@ DCI is distributed in the hope that it will be useful, but WITHOUT ANY
 WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
 PARTICULAR PURPOSE. See the license for more details.
 
-
-
-
+=cut

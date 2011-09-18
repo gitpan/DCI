@@ -2,148 +2,100 @@ package DCI::Context;
 use strict;
 use warnings;
 
-use DCI::Context::Base;
-use Exporter::Declare;
+use Carp();
 
-sub after_import {
+sub import {
     my $class = shift;
-    my ( $importer, $specs ) = @_;
-    no strict 'refs';
-    push @{ "$importer\::ISA" } => 'DCI::Context::Base';
+    my $caller = caller;
+
+    $class->before_import( $class, $caller, \@_ )
+        if $class->can( 'before_import' );
+
+    $class->dci_export_to( $caller, @_ );
+
+    $class->after_import_import( $class, $caller, @_ )
+        if $class->can( 'after_import' );
 }
 
-default_export cast => sub {
-    my $class = caller;
-    my $meta = $class->CONTEXT_META;
-    my %roles = @_;
-    for my $role ( keys %roles ) {
-        if( my $cast = $roles{$role} ) {
-            eval "require $cast; 1" || die $@;
-        }
-        no strict 'refs';
-        *{"$class\::$role"} = sub { shift->{$role} };
+sub dci_export_to {
+    my $class = shift;
+    my ( $caller, @export_list ) = @_;
+
+    my %exports = $class->dci_meta->dci_exports;
+    @export_list = keys %exports unless @export_list;
+
+    for my $name ( @export_list ) {
+        my $sub = $exports{ $name } || Carp::croak "$class does not export '$name'";
+        $class->dci_meta->inject( $caller, $name => $sub );
     }
-    %$meta = ( %$meta, %roles );
-    return %$meta;
-};
+}
 
-gen_default_export CONTEXT_META => sub {
-    my $meta = {};
-    return sub { $meta };
-};
+sub new {
+    my $class = shift;
+    my %args = @_;
 
-default_export sugar => sub {
-    my ( $name ) = @_;
-    my $caller = caller;
-    no strict 'refs';
-    *{ "$caller\::import" } = sub {
-        my $class = shift;
-        my $caller = caller;
-        *{ "$caller\::$name" } = sub {
-            $class->new( @_ )->run();
-        };
-    };
-};
+    my $self = bless {}, $class;
+
+    my %roles = map {( $_ => 1 )} $class->dci_meta->roles;
+    my %maybe = map {( $_ => 1 )} $class->dci_meta->maybe_roles;
+    for my $arg ( keys %args ) {
+        Carp::croak( "$class has no role '$arg' to fill" )
+            unless $roles{$arg} || $maybe{$arg};
+
+        delete $roles{$arg};
+
+        # The method takes care of applying the cast.
+        $self->$arg( $args{$arg} );
+    }
+
+    # Ensure all roles are filled.
+    Carp::croak( "No objects provided for roles: " . join( ", ", keys %roles ))
+        if keys %roles;
+
+    return $self;
+}
 
 1;
 
 __END__
 
-=pod
-
 =head1 NAME
 
-DCI::Context - Implementation of the DCI concept of a context, also known as a
-use-case. 
+DCI::Context - Base class for context packages.
 
 =head1 DESCRIPTION
 
-In DCI a context defines an encapsulation of business logic, or of an
-algorithm. A context should define a set of 'roles' (See L<DCI::Cast>), casts
-data objects to "play" those roles, and kick off a set of interactions between
-the roles that accomplishes a given task.
+All Context classes inherit from this class.  This class provides several key
+methods.
 
 =head1 SYNOPSIS
 
-This is a very trivial example. See L<DCI> for a complete example including
-data, Context, and Cast classes.
+See L<DCI> or L<DCI::Meta::Context>, you should probably not directly subclass
+this yourself.
 
-    package MyContext::Divide;
-    use strict;
-    use warnings;
-
-    # This will add DCI::Context::Base to @ISA for us.
-    use DCI::Context;
-
-    cast numerator   => MyContext::Divide::Numerator,
-         denominator => MyContext::Divide::Denominator;
-
-    # If we want to hook into construction, this will be called just before
-    # new() returns.
-    sub init {
-        my $self = shift;
-        ...
-    }
-
-    sub do_divide {
-        my $self = shift;
-        return $self->numerator->value / $self->denominator->value;
-    }
-
-=head1 EXPORTS
-
-When you use DCI::Context it imports the following functions that allow you to
-manipulate metadata for the Context object.
+=head1 METHODS
 
 =over 4
 
-=item $meta = CONTEXT_META()
+=item $class->new( $ROLE => $OBJECT, ... )
 
-Get the metadata hash for this Context class.
+Creates a new instance of your context with the specified role to object
+mapping.
 
-=item $current_roles = cast( role => $cast_package, ... )
+=item $class->dci_export_to( $PACKAGE )
 
-Define roles for the context object, specifying what Cast package should be
-used for the role. Any number of roles may be defined, and C<cast(...)> may be called
-any number of times.
+Exports sugar methods to the specified package.
 
-C<cast()> also returns all currently defined roles.
+=item $class->import( @IMPORT_LIST )
 
-If you wish to define a role, but do not want to apply a cast to the object
-assigned to that role, simply use C<undef> as the Cast class.
-
-=item sugar( 'sugar_function_name' )
-
-Define a sugar function that should be exported. This sugar function will
-construct a context from arguments, call run() on the context, and return the
-final value.
+Used automatically when someone imports your class C<use Your::Context>.
 
 =back
 
-=head1 CAST CLASS/OBJECT METHODS
+=head1 ACHNOWLEDGEMENTS
 
-These are methods defined by the DCI::Context::Base package:
-
-=over 4
-
-=item my $context = $class->new( roleA => $data, ... )
-
-Create a new instance of the context with the specied $data objects fulfilling
-the specified roles.
-
-=back
-
-=head1 DCI RESOURCES
-
-=over 4
-
-=item L<http://www.artima.com/articles/dci_vision.html>
-
-=item L<http://en.wikipedia.org/wiki/Data,_Context_and_Interaction>
-
-=item L<https://sites.google.com/a/gertrudandcope.com/www/thedciarchitecture>
-
-=back
+The DCI concept was created by Trygve Reenskaug, (inventor of MVC) and James
+Coplien.
 
 =head1 AUTHORS
 
@@ -159,6 +111,4 @@ DCI is distributed in the hope that it will be useful, but WITHOUT ANY
 WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
 PARTICULAR PURPOSE. See the license for more details.
 
-
-
-
+=cut
