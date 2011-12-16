@@ -22,3 +22,7 @@ t/lib/Example/Fraction.pm
 t/lib/Example/Integer.pm
 t/lib/Example/Number.pm
 t/POD.t
+t/presentation-dci.t
+t/presentation-dci2.t
+t/presentation-oop.t
+t/presentation-oop2.t

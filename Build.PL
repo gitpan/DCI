@@ -14,7 +14,7 @@ my $build = Module::Build->new(
         'Exporter::Declare' => 0.105,
     },
     build_requires => {
-        'Fennec' => '1.011',
+        'Fennec' => '1.012',
     },
     meta_merge => {
         resources => {
